@@ -10,6 +10,7 @@
 //
 
 #define __SDK_OPTIMIZATION__ 1 
+// #define CPULOAD
 
 #include <string.h>
 #include "msx_fusion.h"
@@ -52,6 +53,7 @@ void main(void)
 	MyLoadMap("datamap.bin",LevelMap);		// load level map 256x11 arranged by columns
 	
 	Screen(8);						  		// Init Screen 8
+	myVDPwrite(0,7);						// borders	
 	VDPlineSwitch();						// 192 lines
 	
 	VDP60Hz();
@@ -251,14 +253,16 @@ void PlotOneColumnTile(void) __sdcccall(1)
 		.endm
 	__endasm;
 }
+
 void PlotOneColumnBorder(void) __sdcccall(1) 
 {
 	__asm
+#ifdef	CPULOAD	
 		ld	a,#0xC0				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
-
+#endif
 		ld 	a,(_vaddrL)
 		ld	e,a				; DE vramm address for new border data 
 		exx
@@ -314,12 +318,12 @@ void PlotOneColumnBorder(void) __sdcccall(1)
 		
 		ld a,#1
 		out (#0xfe),a		; restore page 1
-
+#ifdef	CPULOAD	
 		xor a,a				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
-
+#endif
 		ei
 		ret
 	__endasm;
@@ -369,11 +373,12 @@ void PlotOneColumnTileAndMask(void) __sdcccall(1)
 void PlotOneColumnBorderAndMask(void) __sdcccall(1) 
 {
 	__asm
+#ifdef	CPULOAD		
 		ld a,#0xC0				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
-
+#endif
 		ld 	a,(_vaddrL)
 		ld	e,a				; DE vramm address for new border data 
 		add a,l				; L is +/- WindowW according to the scroll direction
@@ -429,12 +434,12 @@ void PlotOneColumnBorderAndMask(void) __sdcccall(1)
 		
 		ld a,#1
 		out (#0xfe),a		; restore page 1
-
+#ifdef	CPULOAD	
 		xor a,a				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
-
+#endif
 		ei
 	__endasm;
 }
@@ -491,8 +496,8 @@ __asm
 __endasm;
 }
 
+/*
 static unsigned char k;
-
 void NewBorderLines(unsigned char x,char page) __sdcccall(1) __naked
 {
 
@@ -570,6 +575,8 @@ __asm
 __endasm;
 
 }
+*/
+
 void 	myVDPwrite(char data, char vdpreg) __sdcccall(1) __naked
 {
 	vdpreg;
@@ -715,6 +722,7 @@ void mySetAdjust(signed char x, signed char y) __sdcccall(1)
 		Poke(0xFFF1,value);     					// Reg18 Save
 		myVDPwrite(value,18);
 }
+
 /* ---------------------------------
 				FT_Wait
 
@@ -885,7 +893,7 @@ char MyLoadMap(char *file_name,unsigned char* p ) __sdcccall(1)
 }
 
 
-	
+/*	
 void NewBlank(unsigned char x,char page) __sdcccall(1) __naked
 {
 	// myVDPwrite(12,7);
@@ -997,7 +1005,7 @@ __endasm;
 	
 }
 
-
+*/
 
 void myISR(void) __sdcccall(1) __naked
 {
