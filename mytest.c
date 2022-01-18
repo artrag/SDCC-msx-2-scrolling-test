@@ -10,7 +10,8 @@
 //
 
 #define __SDK_OPTIMIZATION__ 1 
-// #define CPULOAD
+#define CPULOAD
+#define VDPLOAD
 
 #include <string.h>
 #include "msx_fusion.h"
@@ -731,7 +732,23 @@ void mySetAdjust(signed char x, signed char y) __sdcccall(1)
 
 void myFT_wait(unsigned char cicles) __sdcccall(1) __naked {
 	cicles;
+	
 __asm
+
+#ifdef	VDPLOAD
+		push af
+		ld		l,#0x07
+		ld		a,#12
+		call	_myVDPwrite		
+		di
+		call	_VDPready
+		ei
+		ld		l,#0x07
+		xor 	a,a
+		call	_myVDPwrite		
+		pop af
+#endif
+
 		or	a, a
 00004$:
 		ret	Z
