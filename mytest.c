@@ -10,14 +10,14 @@
 //
 
 #define __SDK_OPTIMIZATION__ 1 
-#define CPULOAD
-#define VDPLOAD
+// #define CPULOAD
+// #define VDPLOAD
 
 #include <string.h>
-#include "msx_fusion.h"
-#include "vdp_graph2.h"
+#include "header\msx_fusion.h"
+#include "header\vdp_graph2.h"
 
-#include "myheader.h"
+#include "header\myheader.h"
 
 #define DELAY 1
 
@@ -204,7 +204,7 @@ void main(void)
 			
 			MyCommand.nx = 14;
 			myfVDP(&MyCommand);
-			NewBorderLinesR(15+WindowW-1,page);				
+			NewBorderLinesR(16+WindowW-2,page);				
 			NewLinesR(WindowW-2,page^1);
 
 			WLevelx++;	
@@ -224,6 +224,7 @@ void main(void)
 void PlotOneColumnTile(void) __sdcccall(1) 
 {
 	__asm 
+		exx
 		ld	hl,(_p)
 		ld	a,(hl)
 		rlca	
@@ -235,18 +236,14 @@ void PlotOneColumnTile(void) __sdcccall(1)
 		inc	hl
 		ld	(_p),hl			; save next tile
 		and a,#0x3F			; tile number
-		exx
 		add	a,#0x80			; address of the segment
 		ld	h,a				; address of the tile in the segment
 		ld	l,d
-		ld	c,#0x98
 		exx 
 
 		.rept #16
-		ld 	a,e				; set vram address in 14 bits
-		out (#0x99),a
-		ld 	a,d
-		out (#0x99),a
+		out (c),e			; set vram address in 14 bits
+		out (c),d
 		inc d				; new line
 		exx 
 		outi				; write data
@@ -274,6 +271,7 @@ void PlotOneColumnBorder(void) __sdcccall(1)
 		add a,a
 		add a,a
 		ld	d,a				; common offeset of the address in the tile 
+		ld	c,#0x98			; used by _PlotOneColumnTile
 		exx
 		
 		di
@@ -286,7 +284,7 @@ void PlotOneColumnBorder(void) __sdcccall(1)
 		out	(#0x99), a			
 
 		ld	d,#0x40
-		ld 	b,#4
+		ld 	bc,#0x0499
 00004$:		
 		call _PlotOneColumnTile
 		djnz 00004$			; 4 tiles
@@ -334,6 +332,7 @@ void PlotOneColumnBorder(void) __sdcccall(1)
 void PlotOneColumnTileAndMask(void) __sdcccall(1) 
 {
 	__asm 
+		exx
 		ld	hl,(_p)
 		ld	a,(hl)
 		rlca	
@@ -345,25 +344,19 @@ void PlotOneColumnTileAndMask(void) __sdcccall(1)
 		inc	hl
 		ld	(_p),hl			; save next tile
 		and a,#0x3F			; tile number
-		exx
 		add	a,#0x80			; address of the segment
 		ld	h,a				; address of the tile in the segment
 		ld	l,d
-		ld	c,#0x98
 		exx 
 		
 		.rept #16
-		ld 	a,e				; set vram address in 14 bits
-		out (#0x99),a
-		ld 	a,d
-		out (#0x99),a
+		out (c),e			; set vram address in 14 bits
+		out (c),d
 		exx 
 		outi				; write data
-		ld 	a,e				; set vram address in 14 bits
 		exx
-		out (#0x99),a
-		ld 	a,d
-		out (#0x99),a
+		out (c),l			; set vram address in 14 bits for border
+		out (c),d
 		inc d				; new line
 		xor a,a				; write border
 		out (#0x98),a
@@ -383,8 +376,8 @@ void PlotOneColumnBorderAndMask(void) __sdcccall(1)
 		ld 	a,(_vaddrL)
 		ld	e,a				; DE vramm address for new border data 
 		add a,l				; L is +/- WindowW according to the scroll direction
+		ld	l,a				; D and L hold vramm address for blank border
 		exx
-		ld	e,a				; D and alternate E hold vramm address for blank border
 		ld  a,(_WLevelx)
 		and a,#15
 		add a,a
@@ -392,6 +385,7 @@ void PlotOneColumnBorderAndMask(void) __sdcccall(1)
 		add a,a
 		add a,a
 		ld	d,a				; common offeset of the address in the tile 
+		ld	c,#0x98			; used by	_PlotOneColumnTileAndMask	
 		exx
 		
 		di
@@ -403,7 +397,7 @@ void PlotOneColumnBorderAndMask(void) __sdcccall(1)
 		ld	a,#0x8E
 		out	(#0x99), a			
 		ld	d,#0x40
-		ld 	b,#4
+		ld 	bc,#0x0499
 00004$:		
 		call _PlotOneColumnTileAndMask
 		djnz 00004$			; 4 tiles
