@@ -12,8 +12,11 @@
 #define __SDK_OPTIMIZATION__ 1 
 // #define CPULOAD
 // #define VDPLOAD
+// #define WBORDER
 
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "header\msx_fusion.h"
 #include "header\vdp_graph2.h"
 
@@ -30,8 +33,14 @@ unsigned char page;							// VDP active page
   signed int  WLevelx;						// (X,Y) position in the level map 4096x192 of
 unsigned char WLevely;						//  the 240x176 window screen 
 
-#define LevelW 256U							// size of the map in tile
-#define LevelH 11U
+unsigned char LevelW;						// size of the actual map in tile (initialised at level change
+unsigned char LevelH;
+
+  signed int WLevelDX;						// scrolling direction and speed F8.8 on X
+  signed int WLevelDY;						// scrolling direction and speed F8.8 on Y
+
+#define MaxLevelW 256U						// Max size of the map in tile
+#define MaxLevelH 11U
 
 #define WindowW 240U						// size of the screen in pixels
 #define WindowH 176U
@@ -39,12 +48,12 @@ unsigned char WLevely;						//  the 240x176 window screen
 unsigned char newx,page;
 unsigned char OldIsr[3];
 
-unsigned char LevelMap[LevelW*LevelH];
+unsigned char LevelMap[MaxLevelW*MaxLevelH];
 unsigned char buffer[256*8];
 
 void main(void) 
 {
-	unsigned char n,rd;
+	unsigned char rd;
 
 	rd = ReadMSXtype();					  	// Read MSX Type
 
@@ -53,6 +62,9 @@ void main(void)
 	MyLoadTiles("tile0.bin");				// load tile set in segments 4,5,6,7 at 0x8000
 	MyLoadMap("datamap.bin",LevelMap);		// load level map 256x11 arranged by columns
 	
+	printf("\n\rLevelW: %d%\n\r",LevelW);
+	printf("LevelH: %d%\n\r",LevelH);
+		
 	Screen(8);						  		// Init Screen 8
 	myVDPwrite(0,7);						// borders	
 	VDPlineSwitch();						// 192 lines
@@ -65,161 +77,106 @@ void main(void)
 	EnableInterrupt();
 
 	myInstISR();							// install a fake ISR to cut the overhead
-		
 
 	page = 0;
-
-	mySetAdjust(15,8);						// same as myVDPwrite((15-8) & 15,18);	
-
-	WLevelx = 1024+64+16;							// initialise visible page
-	for (n=15;n<255;n++) {
-		myFT_wait(1);
-		NewLinesL(n,page);
-		WLevelx++;
+	mySetAdjust(0,8);						// same as myVDPwrite((0-8) & 15,18);	
+	
+	for (WLevelx = 0;WLevelx<0+WindowW;) {
+		myFT_wait(1);		
+		NewLine(WLevelx,0,WLevelx);WLevelx++;
+		NewLine(WLevelx,0,WLevelx);WLevelx++;
+		NewLine(WLevelx,0,WLevelx);WLevelx++;
+		NewLine(WLevelx,0,WLevelx);WLevelx++;
 	}
-	WLevelx = 1024+64+16;							// initialise visible page
 
+	WLevelx = 0;	
+
+	MyBorder.ny = WindowH;
+	MyBorder.col = 0;
+	MyBorder.param = 0;
+	MyBorder.cmd = opHMMV;
+	
+	MyCommand.ny = WindowH;
+	MyCommand.col = 0;
+	MyCommand.param = 0;
+	MyCommand.cmd = opHMMM;
+	
+	
 	while (myCheckkbd(7)==0xFF)
 	{
-		// init left to right scrolling
-			
-		MyCommand.nx = 16;
-		MyCommand.ny = WindowH;
-		MyCommand.col = 0;
-		MyCommand.param = 0;
-		MyCommand.cmd = opHMMM;
-		
-		MyBorder.dx = 0;	
-		MyBorder.nx = 15;
-		MyBorder.ny = WindowH;
-		MyBorder.col = 0;
-		MyBorder.param = 0;
-		MyBorder.cmd = opHMMV;
-
-
-		while (myCheckkbd(8)==0xFF)
-		{
-			myFT_wait(DELAY);
-			SetDisplayPage(page);
-			
-			myVDPwrite((15-8) & 15,18);		
-
-			MyBorder.dy = 256*(page^1);
-			myfVDP(&MyBorder);
-
-			NewBorderLinesL(15,page);
-			WLevelx--;
-			
-			MyCommand.nx = 16;
-			MyCommand.sx = 224;		
-			MyCommand.dx = 240;	
-			MyCommand.sy = 256*page;
-			MyCommand.dy = MyCommand.sy ^ 256;		
-			
-			for (n=14;n>0;n--) {
-				myFT_wait(DELAY);
-				myVDPwrite((n-8) & 15,18);	
-				myfVDP(&MyCommand);					
-				MyCommand.sx -= 16;
-				MyCommand.dx -= 16;
-				NewBorderLinesL(n,page);				
-				WLevelx--;
-			}
-
-			myFT_wait(DELAY);
-			myVDPwrite((0-8) & 15,18);		
-			MyCommand.nx = 15;
-			MyCommand.sx = 1;
-			MyCommand.dx = 17;
-			myfVDP(&MyCommand);					
-			NewBorderLinesL(0,page);
-			NewLinesL(16,page^1);				// patch
-			WLevelx--;
-			
-			page ^=1;		
+		myFT_wait(DELAY);
+		if ((myCheckkbd(8)==0x7F) && (WLevelx<16*(LevelW-15)))  { 
+			WLevelx++;				
+			ScrollRight(WLevelx & 15);
 		}
-
-		while (myCheckkbd(8)!=0xFF) {}
-		page ^=1;	
-		
-		
-
-	/*	
-		newx = 0;
-		page = 0;
-
-		mySetAdjust(0,8);						// same as myVDPwrite((0-8) & 15,18);	
-		
-		WLevelx = -WindowW;						// initialise visible page
-		for (n=0;n<240;n++) {
-			NewLinesR(n,page);
-			WLevelx++;
+		else if ((myCheckkbd(8)==0xEF) && (WLevelx>0)) { 
+			WLevelx--;				
+			ScrollLeft(WLevelx & 15);
 		}
-	*/
-	
-		// init right to left scrolling
-	
-		MyCommand.ny = WindowH;
-		MyCommand.col = 0;
-		MyCommand.param = 0;
-		MyCommand.cmd = opHMMM;
-		
-		MyBorder.dx = 240;
-		MyBorder.nx = 16;
-		MyBorder.ny = WindowH;
-		MyBorder.col = 0;
-		MyBorder.param = 0;
-		MyBorder.cmd = opHMMV;
-		
-
-		while (myCheckkbd(8)==0xFF)
-		{
-			myFT_wait(DELAY);
-			SetDisplayPage(page);
-			
-			myVDPwrite((0-8) & 15,18);						
-			
-			MyBorder.dy = 256*(page^1);
-			myfVDP(&MyBorder);
-
-			NewLinesR(WindowW-1,page);
-			WLevelx++;
-
-			MyCommand.nx = 16;
-			MyCommand.sx = 16;
-			MyCommand.dx = 0;
-			MyCommand.sy = 256*page;
-			MyCommand.dy = MyCommand.sy ^ 256;
-			for (n=1;n<15;n++) {
-				myFT_wait(DELAY);
-				myVDPwrite((n-8) & 15,18);						
-				myfVDP(&MyCommand);					
-				MyCommand.sx += 16;
-				MyCommand.dx += 16;
-				NewBorderLinesR(n+WindowW-1,page);
-				WLevelx++;			
-			}
-			myFT_wait(DELAY);
-			myVDPwrite((15-8) & 15,18);		
-			
-			MyCommand.nx = 14;
-			myfVDP(&MyCommand);
-			NewBorderLinesR(16+WindowW-2,page);				
-			NewLinesR(WindowW-2,page^1);
-
-			WLevelx++;	
-			page ^=1;		
-		}
-		while (myCheckkbd(8)!=0xFF) {}
-		page ^=1;			
 	}
-	
-	myFT_wait(120);
 
 	myISRrestore();
 	Screen(0);
 	Exit(0);
 }
+
+void ScrollRight(char step) __sdcccall(1) 
+{
+	// from left to right 
+	myVDPwrite((step-8) & 15,18);			
+	switch (step) {
+		case 0: 
+			page ^=1;							// case 0
+			SetDisplayPage(page);
+			MyBorder.dx = 240;
+			MyBorder.nx = 16;
+			MyBorder.dy = 256*page;
+			myfVDP(&MyBorder);
+			BorderLinesR(WindowW-1,page, WLevelx+WindowW-1);		
+		break;
+		default:								// case 1-15
+			MyCommand.sx = 16*step;
+			MyCommand.dx = MyCommand.sx - 16;;
+			MyCommand.sy = 256*page;
+			MyCommand.dy = MyCommand.sy ^ 256;
+			MyCommand.nx = 16;
+			myfVDP(&MyCommand);		
+			BorderLinesR(step+WindowW-1,page,WLevelx+WindowW-1);
+		break;
+	}
+	if (step==15) PatchPlotOneTile(step+WindowW-1-16,page^1,WLevelx+WindowW-1);		
+}
+
+void ScrollLeft(char step) __sdcccall(1)
+{
+	// from right to left
+	myVDPwrite((step-8) & 15,18);	
+	switch (step) {
+		case 15: 
+			page ^=1;					
+			SetDisplayPage(page);				// case 15
+			MyBorder.dx = 0;	
+			MyBorder.nx = 15;
+			MyBorder.dy = 256*page;
+			myfVDP(&MyBorder);
+			BorderLinesL(step,page,WLevelx);		
+		break;				
+		default:								// case 14-0
+			MyCommand.sx = 16*step;
+			MyCommand.dx = MyCommand.sx + 16;
+			MyCommand.sy = 256*page;
+			MyCommand.dy = MyCommand.sy ^ 256;		
+			MyCommand.nx = 16;						
+			myfVDP(&MyCommand);					
+			BorderLinesL(step,page,WLevelx);			
+		break;		
+	}
+	if (step==0) PatchPlotOneTile(16,page^1,WLevelx);				
+}
+
+
+static unsigned char *p;
+__at(0xFFED) unsigned char RG14SA;
 
 void PlotOneColumnTile(void) __sdcccall(1) 
 {
@@ -240,7 +197,7 @@ void PlotOneColumnTile(void) __sdcccall(1)
 		ld	h,a				; address of the tile in the segment
 		ld	l,d
 		exx 
-
+	
 		.rept #16
 		out (c),e			; set vram address in 14 bits
 		out (c),d
@@ -250,83 +207,6 @@ void PlotOneColumnTile(void) __sdcccall(1)
 		exx
 		.endm
 	__endasm;
-}
-
-void PlotOneColumnBorder(void) __sdcccall(1) 
-{
-	__asm
-#ifdef	CPULOAD	
-		ld	a,#0xC0				; color test
-		out	(#0x99), a
-		ld	a,#0x87
-		out	(#0x99), a			
-#endif
-		ld 	a,(_vaddrL)
-		ld	e,a				; DE vramm address for new border data 
-		exx
-		ld  a,(_WLevelx)
-		and a,#15
-		add a,a
-		add a,a
-		add a,a
-		add a,a
-		ld	d,a				; common offeset of the address in the tile 
-		ld	c,#0x98			; used by _PlotOneColumnTile
-		exx
-		
-		di
-
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	d,#0x40
-		ld 	bc,#0x0499
-00004$:		
-		call _PlotOneColumnTile
-		djnz 00004$			; 4 tiles
-
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	d,#0x40
-		ld 	b,#4
-00005$:		
-		call _PlotOneColumnTile
-		djnz 00005$			; 4 tiles
-
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	d,#0x40
-		ld 	b,#3
-00006$:		
-		call _PlotOneColumnTile
-		djnz 00006$			; 3 tiles
-		
-		ld a,#1
-		out (#0xfe),a		; restore page 1
-#ifdef	CPULOAD	
-		xor a,a				; color test
-		out	(#0x99), a
-		ld	a,#0x87
-		out	(#0x99), a			
-#endif
-		ei
-		ret
-	__endasm;
-	
 }
 
 void PlotOneColumnTileAndMask(void) __sdcccall(1) 
@@ -364,213 +244,420 @@ void PlotOneColumnTileAndMask(void) __sdcccall(1)
 	__endasm;
 }
 
-void PlotOneColumnBorderAndMask(void) __sdcccall(1) 
+
+void BorderLinesL(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
 {
-	__asm
-#ifdef	CPULOAD		
-		ld a,#0xC0				; color test
+	ScrnX;
+	page;
+	MapX;
+__asm
+
+	pop bc				; get ret address
+	pop de				; de = MapX
+	push bc 			; save ret address
+
+	ex af,af'			; a' = ScrnX
+	ld a,l				; l = page
+	add a,a
+	add a,a
+	ld (_RG14SA),a
+
+	ld	c,e				; C = low(mapx)
+	
+	sra	d				; DE/16
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	ld	l,e
+	ld	h,d
+	add	hl,hl
+	add	hl,hl
+	add	hl,de	
+	add	hl,hl
+	add	hl,de				; DE/16 * 11
+	
+	ld 	de,#_LevelMap	
+	add	hl,de
+	ld	(_p), hl
+	
+#ifdef	CPULOAD	
+		ld	a,#0xC0				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
 #endif
-		ld 	a,(_vaddrL)
-		ld	e,a				; DE vramm address for new border data 
-		add a,l				; L is +/- WindowW according to the scroll direction
-		ld	l,a				; D and L hold vramm address for blank border
-		exx
-		ld  a,(_WLevelx)
-		and a,#15
-		add a,a
-		add a,a
-		add a,a
-		add a,a
-		ld	d,a				; common offeset of the address in the tile 
-		ld	c,#0x98			; used by	_PlotOneColumnTileAndMask	
-		exx
-		
-		di
-		
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-		ld	d,#0x40
-		ld 	bc,#0x0499
-00004$:		
-		call _PlotOneColumnTileAndMask
-		djnz 00004$			; 4 tiles
-
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-		ld	d,#0x40
-		ld 	b,#4
-00005$:		
-		call _PlotOneColumnTileAndMask
-		djnz 00005$			; 4 tiles
-
-		ld	a,(_vaddrH3bit)	; set address in vdp(14)
-		out	(#0x99), a
-		inc	a
-		ld	(_vaddrH3bit),a	; save next block
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	d,#0x40
-		ld 	b,#3
-00006$:		
-		call _PlotOneColumnTileAndMask
-		djnz 00006$			; 3 tiles
-		
-		ld a,#1
-		out (#0xfe),a		; restore page 1
+	
+	ex af,af'				; a' = ScrnX	
+	ld	e,a 				; DE vramm address for new border data
+	add	a,#240 				; L = E +/- 240U according to the scroll direction
+	ld	l,a 				; DL hold vramm address for blank border
+	
+	ld	a,c					; C = low(MapX)
+	and	a,#15
+	add	a,a
+	add	a,a
+	add	a,a
+	add	a,a
+	exx
+	ld	d,a 				; common offeset of the address in the tile
+	ld	c,#0x98 			; used by _PlotOneColumnTileAndMask
+	exx
+	di
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a 		; save next block
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	c,#0x99
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 4 tiles
+	call	_PlotOneColumnTileAndMask
+	call	_PlotOneColumnTileAndMask
+	call	_PlotOneColumnTileAndMask
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a 		; save next block
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 4 tiles
+	call	_PlotOneColumnTileAndMask
+	call	_PlotOneColumnTileAndMask
+	call	_PlotOneColumnTileAndMask
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 3 tiles
+	call	_PlotOneColumnTileAndMask
+	call	_PlotOneColumnTileAndMask
+	ld	a,#1
+	out	(#0xfe),a 			; restore page 1
+	
 #ifdef	CPULOAD	
 		xor a,a				; color test
 		out	(#0x99), a
 		ld	a,#0x87
 		out	(#0x99), a			
 #endif
-		ei
-	__endasm;
-}
-
-
-static unsigned char *p;
-static unsigned char vaddrL,vaddrH,vaddrH3bit;
-
-
-void NewBorderLinesR(unsigned char x,char page) __sdcccall(1) __naked
-{
-	vaddrH3bit = page*4;
-	vaddrL = x;	
-	
-	p = &LevelMap[(WLevelx+WindowW)/16 * LevelH];		// pointer to the column in the level map
-	
-__asm
-		ld	l,#-240
-		jp _PlotOneColumnBorderAndMask
+	ei
+	ret
 __endasm;
 }
 
-void NewBorderLinesL(unsigned char x,char page) __sdcccall(1) __naked
+void BorderLinesR(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
 {
-	vaddrH3bit = page*4;
-	vaddrL = x;	
-	
-	p = &LevelMap[(WLevelx)/16 * LevelH];		// pointer to the column in the level map
-	
+	ScrnX;
+	page;
+	MapX;
 __asm
-		ld	l,#240
-		jp _PlotOneColumnBorderAndMask
-__endasm;
-}
 
+	pop bc				; get ret address
+	pop de				; DE = MapX+WindowW
+	push bc 			; save ret address
 
-void NewLinesR(unsigned char x,char page) __sdcccall(1) __naked
-{
-	vaddrH3bit = page*4;
-	vaddrL = x;	
-	p = &LevelMap[(WLevelx+WindowW)/16 * LevelH];		// pointer to the column in the level map
-__asm
-		jp _PlotOneColumnBorder
-__endasm;
-}
+	ex af,af'			; a' = ScrnX
+	ld a,l				; l = page
+	add a,a
+	add a,a
+	ld (_RG14SA),a
 
-void NewLinesL(unsigned char x,char page) __sdcccall(1) __naked
-{
-	vaddrH3bit = page*4;
-	vaddrL = x;	
-	p = &LevelMap[(WLevelx)/16 * LevelH];		// pointer to the column in the level map
-__asm
-		jp _PlotOneColumnBorder
-__endasm;
-}
-
-/*
-static unsigned char k;
-void NewBorderLines(unsigned char x,char page) __sdcccall(1) __naked
-{
-
-	k = page*4;
-	vaddrL = x;
-
-	// p = &ScreenSlice[192*(newx & 255)];
+	ld	c,e				; C = low(mapx)
 	
-	p = (unsigned char*) 0x8000 + 256*(newx & 63);
+	sra	d				; DE/16
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	ld	l,e
+	ld	h,d
+	add	hl,hl
+	add	hl,hl
+	add	hl,de	
+	add	hl,hl
+	add	hl,de				; DE/16 * 11
 	
-	newx++;
-
-__asm
-		
-		ld	c,#3
-		ld	a,(_k)
-		ld	e,a
-		ld 	a,(_vaddrL)
-		ld	l,a		
-		sub a,#240
-
-		exx 
-		ld	e,a
-		ld	c,#0x98
-		ld	hl,(_p)
-		exx 		
-		
-		di
-00002$:
-;		ld	a,c				; color test
-;		out	(#0x99), a
-;		ld	a,#0x87
-;		out	(#0x99), a			
-
-		ld	a,e				; set address in vdp(14)
+	ld 	de,#_LevelMap	
+	add	hl,de
+	ld	(_p), hl
+	
+#ifdef	CPULOAD	
+		ld	a,#0xC0				; color test
 		out	(#0x99), a
-		inc	e
-		ld	a,#0x8E
+		ld	a,#0x87
 		out	(#0x99), a			
-
-		ld	h,#0x40
-		ld 	b,h
-00001$:
-		ld 	a,l				; set vram address in 14 bits
-		out (#0x99),a
-		ld 	a,h
-		out (#0x99),a
-		
-		exx 
-		outi				; write data
-
-		ld 	a,e				; set vram address in 14 bits
-		exx
-		out (#0x99),a
-		ld 	a,h
-		out (#0x99),a
-
-		xor a,a
-		out (#0x98),a
-
-		inc h
-		djnz 00001$
-
-
-		dec c
-		jr nz,00002$
-		
-;		ld a,#255				; color test
-;		out	(#0x99), a
-;		ld	a,#0x87
-;		out	(#0x99), a			
-
-		ei
-		ret
+#endif
+	
+	ex af,af'				; a' = ScrnX	
+	ld	e,a 				; DE vramm address for new border data
+	sub	a,#240 				; L = E +/- 240U according to the scroll direction
+	ld	l,a 				; DL hold vramm address for blank border
+	
+	ld	a,c					; C = low(MapX)
+	and	a,#15
+	add	a,a
+	add	a,a
+	add	a,a
+	add	a,a
+	exx
+	ld	d,a 				; common offeset of the address in the tile
+	ld	c,#0x98 			; used by _PlotOneColumnTileAndMask
+	exx
+	di
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a 		; save next block
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	c,#0x99
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 4 tiles
+	call	_PlotOneColumnTileAndMask	
+	call	_PlotOneColumnTileAndMask	
+	call	_PlotOneColumnTileAndMask	
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a 		; save next block
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 4 tiles
+	call	_PlotOneColumnTileAndMask	
+	call	_PlotOneColumnTileAndMask	
+	call	_PlotOneColumnTileAndMask	
+	ld	a,(_RG14SA) 		; set address in vdp(14)
+	out	(#0x99), a
+	ld	a,#0x8E
+	out	(#0x99), a
+	ld	d,#0x40
+	call	_PlotOneColumnTileAndMask	; plot 3 tiles
+	call	_PlotOneColumnTileAndMask	
+	call	_PlotOneColumnTileAndMask	
+	ld	a,#1
+	out	(#0xfe),a 			; restore page 1
+	
+#ifdef	CPULOAD	
+		xor a,a				; color test
+		out	(#0x99), a
+		ld	a,#0x87
+		out	(#0x99), a			
+#endif
+	ei
+	ret
 __endasm;
-
 }
-*/
+
+void NewLine(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
+{
+	ScrnX;
+	page;
+	MapX;
+
+	__asm
+	pop bc				; get ret address
+	pop de				; de = MapX
+	push bc 			; save ret address
+
+	ex af,af'			; a' = ScrnX
+	ld a,l				; l = page
+	add a,a
+	add a,a
+	ld (_RG14SA),a
+
+	ld	c,e				; C = low(mapx)
+
+	sra	d				; DE/16
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	ld	l,e
+	ld	h,d
+	add	hl,hl
+	add	hl,hl
+	add	hl,de	
+	add	hl,hl
+	add	hl,de				; DE/16 * 11
+
+	ld 	de,#_LevelMap	
+	add	hl,de
+	ld	(_p), hl
+	
+#ifdef	CPULOAD	
+		ld	a,#0xC0				; color test
+		out	(#0x99), a
+		ld	a,#0x87
+		out	(#0x99), a			
+#endif
+	ex af,af'			; a' = ScrnX	
+	ld	e,a				; DE vramm address for new border data 
+	
+	ld	a,c				; C = low(MapX)
+	and a,#15
+	add a,a
+	add a,a
+	add a,a
+	add a,a
+	exx
+	ld	d,a				; common offeset of the address in the tile 
+	ld	c,#0x98			; used by _PlotOneColumnTile
+	exx
+	
+	di
+
+	ld	a,(_RG14SA)	; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a	; save next block
+	ld	a,#0x8E
+	out	(#0x99), a			
+
+	ld 	c,#0x99
+	ld	d,#0x40
+	call _PlotOneColumnTile		; 4 tiles
+	call _PlotOneColumnTile
+	call _PlotOneColumnTile
+	call _PlotOneColumnTile
+
+	ld	a,(_RG14SA)	; set address in vdp(14)
+	out	(#0x99), a
+	inc	a
+	ld	(_RG14SA),a	; save next block
+	ld	a,#0x8E
+	out	(#0x99), a			
+
+	ld	d,#0x40
+	call _PlotOneColumnTile		; 4 tiles
+	call _PlotOneColumnTile
+	call _PlotOneColumnTile
+	call _PlotOneColumnTile
+
+	ld	a,(_RG14SA)	; set address in vdp(14)
+	out	(#0x99), a
+	ld	a,#0x8E
+	out	(#0x99), a			
+
+	ld	d,#0x40
+	call _PlotOneColumnTile		; 3 tiles
+	call _PlotOneColumnTile		
+	call _PlotOneColumnTile		
+	
+	ld a,#1
+	out (#0xfe),a		; restore page 1
+	
+#ifdef	CPULOAD	
+		xor a,a				; color test
+		out	(#0x99), a
+		ld	a,#0x87
+		out	(#0x99), a			
+#endif
+	ei
+	ret
+	__endasm;}
+
+
+
+void PatchPlotOneTile(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
+{
+	ScrnX;
+	page;
+	MapX;
+
+__asm
+	pop bc				; get ret address
+	pop de				; DE = MapX
+	push bc 			; save ret address
+
+	ex af,af'			; a' = ScrnX
+	ld a,l				; l = page
+	add a,a
+	add a,a
+	ld (_RG14SA),a
+
+	ld	c,e				; C = low(mapx)
+
+	sra	d				; DE/16
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	sra	d
+	rr	e
+	ld	l,e
+	ld	h,d
+	add	hl,hl
+	add	hl,hl
+	add	hl,de	
+	add	hl,hl
+	add	hl,de				; DE/16 * 11
+
+	ld 	de,#_LevelMap	
+	add	hl,de
+	ld	(_p), hl
+
+	ex af,af'				; a' = ScrnX	
+	ld	e,a 				; DE vramm address for new border data
+
+	ld	a,c					; C = low(MapX)
+	and	a,#15
+	add	a,a
+	add	a,a
+	add	a,a
+	add	a,a
+
+	exx
+	ld	d,a 				; common offeset of the address in the tile
+	ld	c,#0x98 			; used by _PlotOneColumnTile
+	exx
+	
+	di
+#ifdef	CPULOAD	
+		ld	a,#0xC0				; color test
+		out	(#0x99), a
+		ld	a,#0x87
+		out	(#0x99), a			
+#endif
+
+	ld	a,(_RG14SA)	; set address in vdp(14)
+	out	(#0x99), a
+	ld	a,#0x8E
+	out	(#0x99), a			
+
+	ld	d,#0x40
+	ld 	c,#0x99
+	
+	call _PlotOneColumnTile		; 1 tile
+	
+	ld a,#1
+	out (#0xfe),a		; restore page 1
+		
+#ifdef	CPULOAD	
+		xor a,a				; color test
+		out	(#0x99), a
+		ld	a,#0x87
+		out	(#0x99), a			
+#endif
+	ei
+	ret
+__endasm;
+}
+
 
 void 	myVDPwrite(char data, char vdpreg) __sdcccall(1) __naked
 {
@@ -611,23 +698,8 @@ __endasm;
 }
 
 
-void readLine( unsigned char *p) __sdcccall(1) __naked
-{
-	p;
-__asm	
-		ld		bc,#0x0098		; read 256 points from port 98h
-		ld		de,#191
-00005$:
-		ini						; and put tham as a column of matrix at HL
-		add hl,de
-		jr	nz,00005$
-		ret
-__endasm;
-	
-}
 
-
-void  	myfVDP(void *Address)  __z88dk_fastcall  __naked
+void  	myfVDP(void *Address)  __sdcccall(1)  __naked
 {
 	Address;
 __asm
@@ -758,7 +830,7 @@ __endasm;
 	Set the name of a file to load
 				(MSX DOS)
 -----------------------------------*/ 
-void FT_SetName( FCB *p_fcb, const char *p_name ) 
+void FT_SetName( FCB *p_fcb, const char *p_name ) __sdcccall(1) 
 {
 	char i, j;
 	memset( p_fcb, 0, sizeof(FCB) );
@@ -782,7 +854,7 @@ void FT_SetName( FCB *p_fcb, const char *p_name )
 
 		  In case of Error
 -----------------------------------*/ 
-void FT_errorHandler(char n, char *name)
+void FT_errorHandler(char n, char *name) __sdcccall(1) 
 {
 	Screen(0);
 	SetColors(15,6,6);
@@ -817,7 +889,7 @@ void FT_errorHandler(char n, char *name)
 	Load a SC8 Picture and put datas
   on screen, begining at start_Y line
 -----------------------------------*/ 
-char myFT_LoadSc8Image(char *file_name, unsigned int start_Y, char *buffer)
+char myFT_LoadSc8Image(char *file_name, unsigned int start_Y, char *buffer) __sdcccall(1) 
 {
 	unsigned int rd,nbl;
 	FT_SetName( &file, file_name );
@@ -889,6 +961,12 @@ char MyLoadMap(char *file_name,unsigned char* p ) __sdcccall(1)
 		return (0);
 	}
 
+	LevelW = MaxLevelW;
+	LevelH = MaxLevelH;
+
+	rd = fcb_read( &file, &LevelW, 1);		// Level Width
+	rd = fcb_read( &file, &LevelH, 1);		// Level Height
+
 	rd = fcb_read( &file, p, 256U*11U );	// 256 columns x 11 rows
 
 	if(rd != 256U*11U) {
@@ -904,138 +982,25 @@ char MyLoadMap(char *file_name,unsigned char* p ) __sdcccall(1)
 }
 
 
-/*	
-void NewBlank(unsigned char x,char page) __sdcccall(1) __naked
-{
-	// myVDPwrite(12,7);
-	
-	k = page*4;
-	vaddrL  = x;
-
-__asm
-		ld	c,#3
-		ld	a,(_k)
-		ld	e,a
-		ld 	a,(_vaddrL)
-		ld	l,a		
-		di		
-00002$:
-		ld	a,e
-		out	(#0x99), a
-		inc	e
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	h,#0x40
-		ld 	b,h
-00001$:
-		ld 	a,l
-		out (#0x99),a
-		ld 	a,h
-		out (#0x99),a
-		
-		xor a,a
-		out (#0x98),a
-		
-		inc h
-		djnz 00001$
-
-		dec c
-		jr nz,00002$
-		ei
-		ret
-__endasm;
-	// myVDPwrite(0,7);
-}
-
-
-
-void NewLine(unsigned char x,char page) __sdcccall(1) __naked
-{
-	
-	k = page*4;
-	vaddrL = x;
-
-	// p = &ScreenSlice[192*(newx & 255)];
-	
-	p = (unsigned char*) 0x8000 + 256*(newx & 63);
-
-	newx++;
-
-__asm
-		exx 
-		ld	c,#0x98
-		ld	hl,(_p)
-		exx 		
-		
-		ld	c,#3
-		ld	a,(_k)
-		ld	e,a
-		ld 	a,(_vaddrL)
-		ld	l,a		
-		di
-00002$:
-;		ld	a,c				; color test
-;		out	(#0x99), a
-;		ld	a,#0x87
-;		out	(#0x99), a			
-
-		ld	a,e				; set address in vdp(14)
-		out	(#0x99), a
-		inc	e
-		ld	a,#0x8E
-		out	(#0x99), a			
-
-		ld	h,#0x40
-		ld 	b,h
-00001$:
-		ld 	a,l				; set vram address in 14 bits
-		out (#0x99),a
-		ld 	a,h
-		out (#0x99),a
-		
-		exx 
-		outi				; write data
-		exx
-
-		inc h
-		djnz 00001$
-
-
-		dec c
-		jr nz,00002$
-
-;		ld a,#255				; color test
-;		out	(#0x99), a
-;		ld	a,#0x87
-;		out	(#0x99), a		
-		
-		ei
-		ret
-__endasm;
-	
-}
-
-*/
-
 void myISR(void) __sdcccall(1) __naked
 {
 __asm 
-		push af
-		// ld	a,#0xE0			// green 
-		// out	(#0x99),a
-		// ld	a,#128+#7
-		// out	(#0x99),a 
-		
-		xor  a,a           ; set Status Register #0 for reading
-		out (#0x99),a
-		ld  a,#0x8f
-		out (#0x99),a
+	push af
+#ifdef WBORDER	
+	ld	a,#0xFF			// white
+	out	(#0x99),a
+	ld	a,#128+#7
+	out	(#0x99),a 
+#endif
+	xor  a,a           ; set Status Register #0 for reading
+	out (#0x99),a
+	ld  a,#0x8f
+	out (#0x99),a
 
-		in  a,(#0x99)		; mimimum ISR
-		pop	af
-		ei 
-		ret
+	in  a,(#0x99)		; mimimum ISR
+	pop	af
+	ei 
+	ret
 __endasm;
 }
 

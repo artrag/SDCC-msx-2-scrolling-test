@@ -381,7 +381,7 @@ if "%VERBOSE_COMPILATION%"=="2" (
 )
 
 
-sdcc  !CCFLAGS! --sdcccall 0
+sdcc  !CCFLAGS! --disable-warning 158 --opt-code-speed --max-allocs-per-node 50000 --sdcccall 0
 
 rem @java -jar mdl.jar tmp/$*.source.asm -dialect sdcc -ro -po -asm-dialect tmp/$*.source.mdl.asm
 
