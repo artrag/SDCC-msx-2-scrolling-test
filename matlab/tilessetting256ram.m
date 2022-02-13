@@ -17,10 +17,11 @@ for g=0:7
     end
 end
 
-%[A,MAP] = imread('test_level.png');                     % 4096x176 pixels x 256 colori
-[A,MAP] = imread('test4.bmp');                     % 4096x176 pixels x 256 colori
+%[A,MAP] = imread('test.bmp');                     % 4096x176 pixels x 256 colori
+%[A,MAP] = imread('leveltest_forest.bmp');                     % 4096x176 pixels x 256 colori
+[A,MAP] = imread('Leveltest_rev.bmp');
 
-[A,pal] = imapprox(A,MAP,pal, 'nodither');
+[A,MAP] = imapprox(A,MAP,pal, 'nodither');
 
 S = fix(size(A)/16).*16;
 B = A(1:S(1),1:S(2));
@@ -128,6 +129,10 @@ fid = fopen('datamap.bin','wb');
 % for i=1:(H/16)
 %     fwrite(fid,X(i,:)-1,'uchar');
 % end
+
+fwrite(fid,W/16,'uchar');  % level width in 16x16 tiles
+fwrite(fid,H/16,'uchar');  % level height in 16x16 tiles
+
 for j=1:(W/16)                          % map organised by columns
     fwrite(fid,X(:,j)-1,'uchar');
 end
