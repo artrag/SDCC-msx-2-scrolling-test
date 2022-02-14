@@ -22,8 +22,6 @@
 
 #include "header\myheader.h"
 
-#define DELAY 1
-
 static FCB file;							// Init the FCB Structure varaible
 static FastVDP MyCommand;
 static FastVDP MyBorder;
@@ -51,6 +49,11 @@ unsigned char OldIsr[3];
 unsigned char LevelMap[MaxLevelW*MaxLevelH];
 unsigned char buffer[256*8];
 
+/*
+SAT = 0FA00h ; R5 = F7h;R11 = 01h
+SPG = 0F000h ; R6 = 1Eh
+*/
+
 void main(void) 
 {
 	unsigned char rd;
@@ -62,8 +65,8 @@ void main(void)
 	MyLoadTiles("tile0.bin");				// load tile set in segments 4,5,6,7 at 0x8000
 	MyLoadMap("datamap.bin",LevelMap);		// load level map 256x11 arranged by columns
 	
-	printf("\n\rLevelW: %d%\n\r",LevelW);
-	printf("LevelH: %d%\n\r",LevelH);
+	// printf("\n\rLevelW: %d%\n\r",LevelW);
+	// printf("LevelH: %d%\n\r",LevelH);
 		
 	Screen(8);						  		// Init Screen 8
 	myVDPwrite(0,7);						// borders	
@@ -75,6 +78,8 @@ void main(void)
 	DisableInterrupt();
 	VDPready();								// wait for command completion
 	EnableInterrupt();
+
+	sptr_init();							// sprite init
 
 	myInstISR();							// install a fake ISR to cut the overhead
 
@@ -104,14 +109,19 @@ void main(void)
 	
 	while (myCheckkbd(7)==0xFF)
 	{
-		myFT_wait(DELAY);
+		WaitLineInt();
 		if ((myCheckkbd(8)==0x7F) && (WLevelx<16*(LevelW-15)))  { 
-			WLevelx++;				
+			WLevelx++;
+			sat_update(WLevelx);			
 			ScrollRight(WLevelx & 15);
 		}
 		else if ((myCheckkbd(8)==0xEF) && (WLevelx>0)) { 
-			WLevelx--;				
+			WLevelx--;
+			sat_update(WLevelx);						
 			ScrollLeft(WLevelx & 15);
+		}
+		else {
+			sat_update(WLevelx);
 		}
 	}
 
@@ -176,7 +186,13 @@ void ScrollLeft(char step) __sdcccall(1)
 
 
 static unsigned char *p;
+__at(0xF3DF) unsigned char RG0SAV;
+__at(0xF3E0) unsigned char RG1SAV;
+
+__at(0xFFE7) unsigned char RG8SAV;
+__at(0xFFE8) unsigned char RG9SAV;
 __at(0xFFED) unsigned char RG14SA;
+
 
 void PlotOneColumnTile(void) __sdcccall(1) 
 {
@@ -668,7 +684,7 @@ __asm
 		di
 		out (#0x99),a
 		ld  a,#128
-		or l
+		or 	a,l
 		out (#0x99),a            ;R#A := L
 		ei 
         ret
@@ -823,6 +839,41 @@ __asm
 		jp	00004$
 __endasm;
 }
+
+void WaitLineInt(void) __sdcccall(1) __naked {
+	
+__asm
+#ifdef	VDPLOAD
+		ld		l,#7
+		ld		a,#12
+		call	_myVDPwrite		
+		di
+		call	_VDPready
+		ei
+		ld		l,#7
+		xor 	a,a
+		call	_myVDPwrite		
+#endif
+		di
+		ld  a,#1           ; set Status Register #1 for reading
+		out (#0x99),a
+		ld  a,#0x8f
+		out (#0x99),a
+
+WaitLI:
+		in  a,(#0x99)	
+		rrca
+		jr	nc,WaitLI
+
+		xor  a,a           ; set Status Register #0 for reading
+		out (#0x99),a
+		ld  a,#0x8f
+		out (#0x99),a
+		ei
+		ret
+__endasm;
+}
+
 
 /* ---------------------------------
 				FT_SetName
@@ -987,7 +1038,7 @@ void myISR(void) __sdcccall(1) __naked
 __asm 
 	push af
 #ifdef WBORDER	
-	ld	a,#0xFF			// white
+	ld	a,#0x03			// blue
 	out	(#0x99),a
 	ld	a,#128+#7
 	out	(#0x99),a 
@@ -998,6 +1049,13 @@ __asm
 	out (#0x99),a
 
 	in  a,(#0x99)		; mimimum ISR
+#ifdef WBORDER	
+	xor	a,a
+	out	(#0x99),a
+	ld	a,#128+#7
+	out	(#0x99),a 
+#endif
+
 	pop	af
 	ei 
 	ret
@@ -1006,6 +1064,10 @@ __endasm;
 
 void myInstISR(void) __sdcccall(1) __naked
 {
+	myVDPwrite(WindowH,19);
+	// RG0SAV |= 16;
+	// myVDPwrite(RG0SAV,0);
+	
 __asm 
 	ld	hl,#0x38
 	ld  de,#_OldIsr
@@ -1023,6 +1085,9 @@ __endasm;
 
 void myISRrestore(void) __sdcccall(1) __naked
 {
+	RG0SAV &= 0xEF;
+	myVDPwrite(RG0SAV,0);
+	
 __asm 
 	ld	hl,#_OldIsr
 	ld  de,#0x38
@@ -1065,4 +1130,149 @@ __asm
 __endasm;
 }
 
+void sprite_patterns(void) __naked
+{
+__asm
+    .incbin "matlab\sprites\linktest_frm.bin"
+__endasm;	
+}
+
+void sprite_colors(void) __naked
+{
+__asm
+    .incbin "matlab\sprites\linktest_clr.bin"
+__endasm;	
+}
+void sprite_sat(void) __naked
+{
+__asm
+    .db   #2+#00,#064, #0,#255,  #2+#00,#064,  #4,#255
+    .db   #2+#16,#064, #8,#255,  #2+#16,#064, #12,#255
 	
+    .db  #34+#00,#096, #16,#255, #34+#00,#096,#20,#255
+    .db  #34+#16,#096, #24,#255, #34+#16,#096,#28,#255
+
+    .db  #66+#00,#128, #32,#255, #66+#00,#128,#36,#255
+    .db  #66+#16,#128, #40,#255, #66+#16,#128,#44,#255
+
+    .db  #98+#00,#128, #48,#255, #98+#00,#128,#52,#255
+    .db  #98+#16,#128, #56,#255, #98+#16,#128,#60,#255
+
+    .db   #2+#00,#160, #64,#255,  #2+#00,#160,#68,#255
+    .db   #2+#16,#160, #72,#255,  #2+#16,#160,#76,#255
+
+    .db  #34+#00,#160, #80,#255, #34+#00,#160,#84,#255
+    .db  #34+#16,#160, #88,#255, #34+#16,#160,#92,#255
+
+    .db  #66+#00,#160, #96,#255, #66+#00,#160,#100,#255
+    .db  #66+#16,#160,#104,#255, #66+#16,#160,#108,#255
+
+    .db  #98+#00,#160,#112,#255, #98+#00,#160,#116,#255
+    .db  #98+#16,#160,#120,#255, #98+#16,#160,#124,#255
+	
+	// .db #216
+__endasm;	
+}
+
+void sat_update(int MapX) __sdcccall(1)
+{
+	MapX;
+__asm
+	ex de,hl
+__endasm;	
+
+#ifdef CPULOAD
+	myVDPwrite(255,7);
+#endif
+
+__asm
+
+	ld a,#0
+	ld	hl,#0x0FA00 
+	call SetVdp_Write
+	ld 	hl,#_sprite_sat
+	ld	a,#15
+	and a,e
+	ld  e,a
+	ld  c,#0x98
+		
+	.rept 32
+	outi
+	ld a,e
+	add a,(hl)
+	out (0x98),a
+	inc hl
+	outi
+	outi
+	.endm
+
+__endasm;	
+#ifdef CPULOAD
+	myVDPwrite(0,7);
+#endif
+
+}
+
+void sptr_init(void) __sdcccall(1) __naked
+{
+	RG1SAV |= 2;
+	myVDPwrite(RG1SAV,1);
+	RG8SAV |= 32;
+	myVDPwrite(RG8SAV,8);
+	
+__asm
+	ld a,#0
+	ld	hl,#0x0F000
+	call SetVdp_Write
+	ld 	hl,#_sprite_patterns
+	ld	de,#12*#4*#32
+	call Vram_Write
+	
+	ld a,#0
+	ld	hl,#0x0F800
+	call SetVdp_Write
+	ld 	hl,#_sprite_colors
+	ld	de,#8*#4*#16
+	call Vram_Write
+
+	ld a,#0
+	ld	hl,#0x0FA00 
+	call SetVdp_Write
+	ld 	hl,#_sprite_sat
+	ld	de,#128
+	call Vram_Write
+
+	ret 
+
+
+Vram_Write:
+	ld  c,#0x98
+00005$:
+	outi
+	dec de
+	ld a,d
+	or a,e
+	jr nz,00005$
+	ret
+					; Set VDP address counter to write from address AHL (17-bit)
+					; Enables the interrupts
+SetVdp_Write:
+    rlc h
+    rla
+    rlc h
+    rla
+    srl h
+    srl h
+    di
+    out (#0x99),a
+    ld a,#0x8E
+    out (#0x99),a
+    ld a,l
+    out (#0x99),a
+    ld a,h
+    or a,#0x40
+    ei
+    out (#0x99),a
+    ret
+__endasm;	
+}
