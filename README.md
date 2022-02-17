@@ -10,4 +10,4 @@ Press arrows to scroll the level left and right.
 
 Press enter to return to dos
 
-Nex step is moving from msxdos to a Konami SCC megarom.
+Next step is moving from msxdos to a Konami SCC megarom.
