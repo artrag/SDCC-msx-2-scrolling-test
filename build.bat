@@ -45,9 +45,9 @@ rem 	# -- Copy Temps files to Out folder (The folder will be created in WorkingF
 set OUT_SAVE=1
 
 rem  #-- OpenMSX APP path (Relative to WorkingFolder directory)
-set OPENMSX_APP_PATH=openMSX\
+set OPENMSX_APP_PATH=F:\openMSX\
 rem  # -- OpenMSX MSX Machine Definition Screipt (relative to WorkindFolder)
-set MSX_MACHINE_SCRIPT_PATH=openMSX\MSX_config\
+set MSX_MACHINE_SCRIPT_PATH=F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder\openMSX\MSX_config\
 
 
 rem  #-- Where to save compilation temps files (may be usefull for debugging)
@@ -465,12 +465,10 @@ if "%MSXVER%" == "1" (
 	start /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%1-emul_start_MSX1_config.txt %CARTRIDGE_SLOT_A%
 )
 if "%MSXVER%" == "2" (
-	start /b /d F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder\openMSX\openmsx.exe -script F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder\openMSX\MSX_config\2-emul_start_MSX2_config.txt 
-	rem start /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%2-emul_start_MSX2_config.txt %CARTRIDGE_SLOT_A%
+	start /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%2-emul_start_MSX2_config.txt 
 )
 if "%MSXVER%" == "3" (
-	start /b /d F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder\openMSX\openmsx.exe -script F:\SDCC\MSX_Fusion-C_V1.3\WorkingFolder\openMSX\MSX_config\3-emul_start_MSX2p_config.txt
-	rem start  /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%3-emul_start_MSX2p_config.txt %CARTRIDGE_SLOT_A%
+	start  /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%3-emul_start_MSX2p_config.txt %CARTRIDGE_SLOT_A%
 )
 if "%MSXVER%" == "4" (
 	start /b /d %PARENT_DIR% %OPENMSX_APP_PATH%openmsx.exe -script %MSX_MACHINE_SCRIPT_PATH%4-emul_start_TURBOR_config.txt %CARTRIDGE_SLOT_A%

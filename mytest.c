@@ -1,7 +1,7 @@
 /*
  ___________________________________________________________
 /				  			  								\
-|				  E X A M P L E	 C O D E					|
+|				  Screen 8 side scroller					|
 \___________________________________________________________/
 */
 //
@@ -79,7 +79,8 @@ void main(void)
 	VDPready();								// wait for command completion
 	EnableInterrupt();
 
-	sptr_init();							// sprite init
+	ObjectsInit();							// initialise logical object 
+	SprtInit();								// initialize sprites in VRAM 
 
 	myInstISR();							// install a fake ISR to cut the overhead
 
@@ -89,9 +90,9 @@ void main(void)
 	for (WLevelx = 0;WLevelx<0+WindowW;) {
 		myFT_wait(1);		
 		NewLine(WLevelx,0,WLevelx);WLevelx++;
+		NewLine(WindowW-WLevelx,0,WindowW-WLevelx);	WLevelx++;
 		NewLine(WLevelx,0,WLevelx);WLevelx++;
-		NewLine(WLevelx,0,WLevelx);WLevelx++;
-		NewLine(WLevelx,0,WLevelx);WLevelx++;
+		NewLine(WindowW-WLevelx,0,WindowW-WLevelx);	WLevelx++;
 	}
 
 	WLevelx = 0;	
@@ -112,16 +113,16 @@ void main(void)
 		WaitLineInt();
 		if ((myCheckkbd(8)==0x7F) && (WLevelx<16*(LevelW-15)))  { 
 			WLevelx++;
-			sat_update(WLevelx);			
+			SatUpdate(WLevelx);			
 			ScrollRight(WLevelx & 15);
 		}
 		else if ((myCheckkbd(8)==0xEF) && (WLevelx>0)) { 
 			WLevelx--;
-			sat_update(WLevelx);						
+			SatUpdate(WLevelx);						
 			ScrollLeft(WLevelx & 15);
 		}
 		else {
-			sat_update(WLevelx);
+			SatUpdate(WLevelx);
 		}
 	}
 
@@ -139,7 +140,7 @@ void ScrollRight(char step) __sdcccall(1)
 			page ^=1;							// case 0
 			SetDisplayPage(page);
 			MyBorder.dx = 240;
-			MyBorder.nx = 16;
+			MyBorder.nx = 15;
 			MyBorder.dy = 256*page;
 			myfVDP(&MyBorder);
 			BorderLinesR(WindowW-1,page, WLevelx+WindowW-1);		
@@ -196,68 +197,68 @@ __at(0xFFED) unsigned char RG14SA;
 
 void PlotOneColumnTile(void) __sdcccall(1) 
 {
-	__asm 
-		exx
-		ld	hl,(_p)
-		ld	a,(hl)
-		rlca	
-		rlca
-		and a,#3
-		add a,#4
-		out (#0xfe),a		; set segment in 4..7
-		ld	a,(hl)
-		inc	hl
-		ld	(_p),hl			; save next tile
-		and a,#0x3F			; tile number
-		add	a,#0x80			; address of the segment
-		ld	h,a				; address of the tile in the segment
-		ld	l,d
-		exx 
-	
-		.rept #16
-		out (c),e			; set vram address in 14 bits
-		out (c),d
-		inc d				; new line
-		exx 
-		outi				; write data
-		exx
-		.endm
-	__endasm;
+__asm 
+	exx
+	ld	hl,(_p)
+	ld	a,(hl)
+	rlca	
+	rlca
+	and a,#3
+	add a,#4
+	out (#0xfe),a		; set segment in 4..7
+	ld	a,(hl)
+	inc	hl
+	ld	(_p),hl			; save next tile
+	and a,#0x3F			; tile number
+	add	a,#0x80			; address of the segment
+	ld	h,a				; address of the tile in the segment
+	ld	l,d
+	exx 
+
+	.rept #16
+	out (c),e			; set vram address in 14 bits
+	out (c),d
+	inc d				; new line
+	exx 
+	outi				; write data
+	exx
+	.endm
+__endasm;
 }
 
 void PlotOneColumnTileAndMask(void) __sdcccall(1) 
 {
-	__asm 
-		exx
-		ld	hl,(_p)
-		ld	a,(hl)
-		rlca	
-		rlca
-		and a,#3
-		add a,#4
-		out (#0xfe),a		; set segment in 4..7
-		ld	a,(hl)
-		inc	hl
-		ld	(_p),hl			; save next tile
-		and a,#0x3F			; tile number
-		add	a,#0x80			; address of the segment
-		ld	h,a				; address of the tile in the segment
-		ld	l,d
-		exx 
-		
-		.rept #16
-		out (c),e			; set vram address in 14 bits
-		out (c),d
-		exx 
-		outi				; write data
-		exx
-		out (c),l			; set vram address in 14 bits for border
-		out (c),d
-		inc d				; new line
-		xor a,a				; write border
-		out (#0x98),a
-		.endm
-	__endasm;
+__asm 
+	exx
+	ld	hl,(_p)
+	ld	a,(hl)
+	rlca	
+	rlca
+	and a,#3
+	add a,#4
+	out (#0xfe),a		; set segment in 4..7
+	ld	a,(hl)
+	inc	hl
+	ld	(_p),hl			; save next tile
+	and a,#0x3F			; tile number
+	add	a,#0x80			; address of the segment
+	ld	h,a				; address of the tile in the segment
+	ld	l,d
+	exx 
+	
+	.rept #16
+	out (c),e			; set vram address in 14 bits
+	out (c),d
+	exx 
+	outi				; write data
+	exx
+	out (c),l			; set vram address in 14 bits for border
+	out (c),d
+	inc d				; new line
+	xor a,a				; write border
+	out (#0x98),a
+	.endm
+__endasm;
 }
 
 
@@ -481,7 +482,7 @@ void NewLine(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
 	page;
 	MapX;
 
-	__asm
+__asm
 	pop bc				; get ret address
 	pop de				; de = MapX
 	push bc 			; save ret address
@@ -750,7 +751,7 @@ fvdpWait:
  __endasm;
 }
 
-
+/*
 char	myPoint( unsigned int X,  unsigned int Y ) __sdcccall(1) __naked
 {
 	X,Y;
@@ -795,10 +796,11 @@ __asm
 		ret
 __endasm;
 }
-	
+*/	
 /* --------------------------------------------------------- */
 /* SETADJUST   Adjust screen offset                          */
 /* --------------------------------------------------------- */
+
 void mySetAdjust(signed char x, signed char y) __sdcccall(1)
 {
 		unsigned char value = ((x-8) & 15) | (((y-8) & 15)<<4);
@@ -819,13 +821,13 @@ __asm
 
 #ifdef	VDPLOAD
 		push af
-		ld		l,#0x07
+		ld		l,#7
 		ld		a,#12
 		call	_myVDPwrite		
 		di
 		call	_VDPready
 		ei
-		ld		l,#0x07
+		ld		l,#7
 		xor 	a,a
 		call	_myVDPwrite		
 		pop af
@@ -940,6 +942,7 @@ void FT_errorHandler(char n, char *name) __sdcccall(1)
 	Load a SC8 Picture and put datas
   on screen, begining at start_Y line
 -----------------------------------*/ 
+/*
 char myFT_LoadSc8Image(char *file_name, unsigned int start_Y, char *buffer) __sdcccall(1) 
 {
 	unsigned int rd,nbl;
@@ -963,6 +966,7 @@ char myFT_LoadSc8Image(char *file_name, unsigned int start_Y, char *buffer) __sd
 	}
 	return(1);
 }
+*/
 
 ////////////////////////////////////////////////////////////
 
@@ -1133,48 +1137,71 @@ __endasm;
 void sprite_patterns(void) __naked
 {
 __asm
-    .incbin "matlab\sprites\linktest_frm.bin"
+    // .incbin "matlab\sprites\linktest_frm.bin"
+    // .incbin "matlab\sprites\linktest_all_frm.bin"
+    .incbin "matlab\sprites\knight_frm.bin"
 __endasm;	
 }
 
 void sprite_colors(void) __naked
 {
 __asm
-    .incbin "matlab\sprites\linktest_clr.bin"
-__endasm;	
-}
-void sprite_sat(void) __naked
-{
-__asm
-    .db   #2+#00,#064, #0,#255,  #2+#00,#064,  #4,#255
-    .db   #2+#16,#064, #8,#255,  #2+#16,#064, #12,#255
-	
-    .db  #34+#00,#096, #16,#255, #34+#00,#096,#20,#255
-    .db  #34+#16,#096, #24,#255, #34+#16,#096,#28,#255
-
-    .db  #66+#00,#128, #32,#255, #66+#00,#128,#36,#255
-    .db  #66+#16,#128, #40,#255, #66+#16,#128,#44,#255
-
-    .db  #98+#00,#128, #48,#255, #98+#00,#128,#52,#255
-    .db  #98+#16,#128, #56,#255, #98+#16,#128,#60,#255
-
-    .db   #2+#00,#160, #64,#255,  #2+#00,#160,#68,#255
-    .db   #2+#16,#160, #72,#255,  #2+#16,#160,#76,#255
-
-    .db  #34+#00,#160, #80,#255, #34+#00,#160,#84,#255
-    .db  #34+#16,#160, #88,#255, #34+#16,#160,#92,#255
-
-    .db  #66+#00,#160, #96,#255, #66+#00,#160,#100,#255
-    .db  #66+#16,#160,#104,#255, #66+#16,#160,#108,#255
-
-    .db  #98+#00,#160,#112,#255, #98+#00,#160,#116,#255
-    .db  #98+#16,#160,#120,#255, #98+#16,#160,#124,#255
-	
-	// .db #216
+    // .incbin "matlab\sprites\linktest_clr.bin"
+    // .incbin "matlab\sprites\linktest_all_clr.bin"
+    .incbin "matlab\sprites\knight_clr.bin"
 __endasm;	
 }
 
-void sat_update(int MapX) __sdcccall(1)
+
+
+struct {
+	signed int x;
+	signed int y;
+	unsigned char type;
+	unsigned char frame;
+	unsigned char status;
+} object[MaxObjNum];
+
+
+void ObjectsInit(void) {
+	unsigned char t;
+	for (t=0;t<MaxObjNum;t++)
+	{
+		object[t].x = t*LevelW*16/MaxObjNum;
+		object[t].y = LevelH*16/2;
+		object[t].frame = t;
+	}
+}
+
+unsigned char sprite_sat[] = {
+     2+16, 64, 8,255,   2+16, 64, 12,255,
+	 2+00, 64, 0,255,   2+00, 64,  4,255,
+	 
+    34+00, 96, 16,255, 34+00, 96,20,255,
+    34+16, 96, 24,255, 34+16, 96,28,255,
+
+    66+00,128, 32,255, 66+00,128,36,255,
+    66+16,128, 40,255, 66+16,128,44,255,
+
+    98+00,128, 48,255, 98+00,128,52,255,
+    98+16,128, 56,255, 98+16,128,60,255,
+
+     2+00,160, 64,255,  2+00,160,68,255,
+     2+16,160, 72,255,  2+16,160,76,255,
+
+    34+00,160, 80,255, 34+00,160,84,255,
+    34+16,160, 88,255, 34+16,160,92,255,
+
+    66+00,160, 96,255, 66+00,160,100,255,
+    66+16,160,104,255, 66+16,160,108,255,
+
+    98+00,160,112,255, 98+00,160,116,255,
+    98+16,160,120,255, 98+16,160,124,255,
+	
+	216
+};
+ 
+void SatUpdate(int MapX) __sdcccall(1)
 {
 	MapX;
 __asm
@@ -1213,7 +1240,7 @@ __endasm;
 
 }
 
-void sptr_init(void) __sdcccall(1) __naked
+void SprtInit(void) __sdcccall(1) __naked
 {
 	RG1SAV |= 2;
 	myVDPwrite(RG1SAV,1);
