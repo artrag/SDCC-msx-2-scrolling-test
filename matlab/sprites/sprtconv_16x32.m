@@ -1,6 +1,8 @@
 clear
 close all
 
+% screen 8 palette for sprites
+
       %  green red blue
 t =   [ 0 0 0
         0 0 2
@@ -18,8 +20,6 @@ t =   [ 0 0 0
         7 0 7
         7 7 0
         7 7 7];
-        
-
 
 sprtpalrgb = t(:,[2 1 3])/7;
 
@@ -27,7 +27,7 @@ sprtpalrgb = t(:,[2 1 3])/7;
 figure;
 r = uint8(kron(0:15,ones(16,1)));
 t = bitor(r,r');
-t = imresize(t,sprtpalrgb,16,'nearest', 'Colormap','original');
+t = imresize(t,sprtpalrgb,8,'nearest', 'Colormap','original');
 image(t)
 colormap(sprtpalrgb);
 axis equal
@@ -35,11 +35,13 @@ grid
 imwrite(t,sprtpalrgb,'grpx\spritepalette.png','png', 'BitDepth',8)
 
 
-name = 'linktest';
+%name = 'linktest';
+%name = 'linktest_all';
+name = 'knight';
 
 %[AA,MAP] = imread([name '_gold.png']);
 %[AA,MAP] = imread([name '_silver.png']);
-[AA,MAP] = imread([name '.png']);
+[AA,MAP] = imread([name '.bmp']);
 
 sprtpalrgb = [ sprtpalrgb ; MAP(17,:)];         % 17 transparent
 %sprtpalrgb = [sprtpalrgb ; ones(240,3)]
@@ -50,11 +52,11 @@ image(Y)
 axis equal
 colormap(MAP)
 
-Y = Y(1:32,1:192);
+Y = Y(1:32,1:384);
 
 Frames = im2col(Y,[32 16],'distinct');
 
-[C,IA,IC] = unique(Frames','rows');
+[C,IA,IC] = unique(Frames','stable','rows');
 
 CC = C';
 A = col2im( CC,[32 16],[32 size(CC,2)*16],'distinct');
@@ -94,14 +96,35 @@ for i = 1:Nframes
     img = Y(h+(1:32),k+(1:16));
     image(img);
     drawnow;
-    i
     for j = 1:32
         line = double(img(j,:))+1;
-        [s1,s2,c1,c2] = convert_line2(line,MAP,sprtpalrgb);
-        frame1{j,i} = s1;
-        frame2{j,i} = s2;
-        color1{j,i} = c1;
-        color2{j,i} = c2;
+        frame1{j,i} = zeros(size(line));
+        frame2{j,i} = zeros(size(line));
+        [bol,loc]= find(line~=17);                      % no trasparent
+        
+        error = inf;
+        for c1=0:15
+            for c2=(c1+1):15
+                pal = sprtpalrgb(1+[c1, c2, bitor(c1,c2)],:);           
+                m = imapprox(line(loc),MAP,pal, 'nodither');
+                newerror = sum(sum((MAP(line(loc),:) - pal(1+m,:)).^2));
+                if (newerror<error) 
+                    error = newerror;
+                    s1 = ((m==0)+(m==2))>0;
+                    s2 = ((m==1)+(m==2))>0;
+                    mc1 = c1;
+                    if any(any(m==2))
+                        mc2 = c2+64;
+                    else
+                        mc2 = c2;
+                    end
+                end
+            end
+        end
+        frame1{j,i}(loc) = s1;
+        frame2{j,i}(loc) = s2;
+        color1{j,i} = mc1;
+        color2{j,i} = mc2;
     end
     
     Template = [Template img];
