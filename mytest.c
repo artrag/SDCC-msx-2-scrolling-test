@@ -10,7 +10,7 @@
 //
 
 #define __SDK_OPTIMIZATION__ 1 
-// #define CPULOAD
+#define CPULOAD
 // #define VDPLOAD
 // #define WBORDER
 
@@ -49,8 +49,12 @@ unsigned char OldIsr[3];
 unsigned char LevelMap[MaxLevelW*MaxLevelH];
 unsigned char buffer[256*8];
 
+char cursat = 0;
+
 /*
-SAT = 0FA00h ; R5 = F7h;R11 = 01h
+SAT0 = 0FA00h ; R5 = F7h;R11 = 01h
+SAT1 = 1FA00h ; R5 = F7h;R11 = 03h
+
 SPG = 0F000h ; R6 = 1Eh
 */
 
@@ -110,19 +114,21 @@ void main(void)
 	
 	while (myCheckkbd(7)==0xFF)
 	{
-		WaitLineInt();
+		WaitLineInt();		// wait for line 176
+		SwapSat();			// swap sat 0 and sat 1
+		
 		if ((myCheckkbd(8)==0x7F) && (WLevelx<16*(LevelW-15)))  { 
 			WLevelx++;
-			SatUpdate(WLevelx);			
+			ObjectstoVRAM(WLevelx);			
 			ScrollRight(WLevelx & 15);
 		}
 		else if ((myCheckkbd(8)==0xEF) && (WLevelx>0)) { 
 			WLevelx--;
-			SatUpdate(WLevelx);						
+			ObjectstoVRAM(WLevelx);			
 			ScrollLeft(WLevelx & 15);
 		}
 		else {
-			SatUpdate(WLevelx);
+			ObjectstoVRAM(WLevelx);						
 		}
 	}
 
@@ -192,7 +198,15 @@ __at(0xF3E0) unsigned char RG1SAV;
 
 __at(0xFFE7) unsigned char RG8SAV;
 __at(0xFFE8) unsigned char RG9SAV;
+__at(0xFFE9) unsigned char RG10SA;
+__at(0xFFEA) unsigned char RG11SA;
+__at(0xFFEB) unsigned char RG12SA;
+__at(0xFFEC) unsigned char RG13SA;
 __at(0xFFED) unsigned char RG14SA;
+__at(0xFFEE) unsigned char RG15SA;
+__at(0xFFEF) unsigned char RG16SA;
+__at(0xFFF0) unsigned char RG17SA;
+__at(0xFFF1) unsigned char RG18SA;
 
 
 void PlotOneColumnTile(void) __sdcccall(1) 
@@ -260,7 +274,6 @@ __asm
 	.endm
 __endasm;
 }
-
 
 void BorderLinesL(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
 {
@@ -587,8 +600,6 @@ __asm
 	ret
 	__endasm;}
 
-
-
 void PatchPlotOneTile(unsigned char ScrnX,char page, int MapX) __sdcccall(1) __naked
 {
 	ScrnX;
@@ -675,79 +686,75 @@ __asm
 __endasm;
 }
 
-
 void 	myVDPwrite(char data, char vdpreg) __sdcccall(1) __naked
 {
 	vdpreg;
 	data;
-
 __asm	
-		di
-		out (#0x99),a
-		ld  a,#128
-		or 	a,l
-		out (#0x99),a            ;R#A := L
-		ei 
-        ret
+	di
+	out (#0x99),a
+	ld  a,#128
+	or 	a,l
+	out (#0x99),a            ;R#A := L
+	ei 
+	ret
 __endasm;
 
 }	
 
-unsigned char myInPort(unsigned char port) __sdcccall(1) __naked
+unsigned char myInPort(unsigned char port) __sdcccall(1) __naked __preserves_regs(b,h,l,d,e,iyl,iyh)
 {
 	port;
 __asm	
-		ld		c, a			;	port
-		in		a, (c)			; return value in A
-		ret
+	ld		c, a			;	port
+	in		a, (c)			; return value in A
+	ret
 __endasm;
 }
 
-void myOutPort(unsigned char port,unsigned char data) __sdcccall(1) __naked
+void myOutPort(unsigned char port,unsigned char data) __sdcccall(1) __naked __preserves_regs(a,b,h,l,d,e,iyl,iyh)
 {
 	port;
 	data;
 __asm	
-		ld		c, a			; port in A
-		out		(c),l			; value in L
-		ret
+	ld		c, a			; port in A
+	out		(c),l			; value in L
+	ret
 __endasm;
 }
-
-
 
 void  	myfVDP(void *Address)  __sdcccall(1)  __naked
 {
 	Address;
 __asm
-		di
-		ld  a,#32                ; Start with Reg 32
-		out (#0x99),a
-		ld  a,#128+#17
-		out (#0x99),a            ;R#17 := 32
+	di
+	ld  a,#32                ; Start with Reg 32
+	out (#0x99),a
+	ld  a,#128+#17
+	out (#0x99),a            ;R#17 := 32
 
-		ld  c,#0x9b           	 ; c=#0x9b
+	ld  c,#0x9b           	 ; c=#0x9b
 
 fvdpWait:
-		ld  a,#2
-		out (#0x99),a           
-		ld  a,#128+#15
-		out (#0x99),a
-		in  a,(#0x99)
-		rrca
-		jp  c, fvdpWait        ; wait CE
+	ld  a,#2
+	out (#0x99),a           
+	ld  a,#128+#15
+	out (#0x99),a
+	in  a,(#0x99)
+	rrca
+	jp  c, fvdpWait        ; wait CE
 		
 .rept #15		
-		OUTI    
+	OUTI    
 .endm
 
-		xor  a,a           ; set Status Register #0 for reading
-		out (#0x99),a
-		ld  a,#0x8f
-		out (#0x99),a
+	xor  a,a           ; set Status Register #0 for reading
+	out (#0x99),a
+	ld  a,#0x8f
+	out (#0x99),a
 
-        ei
-        ret
+	ei
+	ret
  __endasm;
 }
 
@@ -803,79 +810,74 @@ __endasm;
 
 void mySetAdjust(signed char x, signed char y) __sdcccall(1)
 {
-		unsigned char value = ((x-8) & 15) | (((y-8) & 15)<<4);
-		Poke(0xFFF1,value);     					// Reg18 Save
-		myVDPwrite(value,18);
+	unsigned char value = ((x-8) & 15) | (((y-8) & 15)<<4);
+	RG18SA = value;			// Reg18 Save
+	myVDPwrite(value,18);
 }
 
 /* ---------------------------------
 				FT_Wait
-
 				Waiting 
 -----------------------------------*/ 
 
 void myFT_wait(unsigned char cicles) __sdcccall(1) __naked {
 	cicles;
-	
 __asm
-
 #ifdef	VDPLOAD
-		push af
-		ld		l,#7
-		ld		a,#12
-		call	_myVDPwrite		
-		di
-		call	_VDPready
-		ei
-		ld		l,#7
-		xor 	a,a
-		call	_myVDPwrite		
-		pop af
+	push af
+	ld		l,#7
+	ld		a,#12
+	call	_myVDPwrite		
+	di
+	call	_VDPready
+	ei
+	ld		l,#7
+	xor 	a,a
+	call	_myVDPwrite		
+	pop af
 #endif
 
-		or	a, a
+	or	a, a
 00004$:
-		ret	Z
-		halt
-		dec	a
-		jp	00004$
+	ret	Z
+	halt
+	dec	a
+	jp	00004$
 __endasm;
 }
 
 void WaitLineInt(void) __sdcccall(1) __naked {
-	
 __asm
 #ifdef	VDPLOAD
-		ld		l,#7
-		ld		a,#12
-		call	_myVDPwrite		
-		di
-		call	_VDPready
-		ei
-		ld		l,#7
-		xor 	a,a
-		call	_myVDPwrite		
+	ld		l,#7
+	ld		a,#12
+	call	_myVDPwrite		
+	di
+	call	_VDPready
+	ei
+	ld		l,#7
+	xor 	a,a
+	call	_myVDPwrite		
 #endif
-		di
-		ld  a,#1           ; set Status Register #1 for reading
-		out (#0x99),a
-		ld  a,#0x8f
-		out (#0x99),a
+	di
+	ld  a,#1           ; set Status Register #1 for reading
+	out (#0x99),a
+	ld  a,#0x8f
+	out (#0x99),a
 
 WaitLI:
-		in  a,(#0x99)	
-		rrca
-		jr	nc,WaitLI
+	in  a,(#0x99)	
+	rrca
+	jr	nc,WaitLI
 
-		xor  a,a           ; set Status Register #0 for reading
-		out (#0x99),a
-		ld  a,#0x8f
-		out (#0x99),a
-		ei
-		ret
+	xor  a,a           ; set Status Register #0 for reading
+	out (#0x99),a
+	ld  a,#0x8f
+	out (#0x99),a
+	ei
+	ret
 __endasm;
 }
-
 
 /* ---------------------------------
 				FT_SetName
@@ -900,7 +902,6 @@ void FT_SetName( FCB *p_fcb, const char *p_name ) __sdcccall(1)
 		}
 	}
 }
-
 
 /* ---------------------------------
 			FT_errorHandler
@@ -934,7 +935,6 @@ void FT_errorHandler(char n, char *name) __sdcccall(1)
 	}
 	Exit(0);
 }
-
 
 /* ---------------------------------
 		  FT_LoadSc8Image
@@ -1137,8 +1137,6 @@ __endasm;
 void sprite_patterns(void) __naked
 {
 __asm
-    // .incbin "matlab\sprites\linktest_frm.bin"
-    // .incbin "matlab\sprites\linktest_all_frm.bin"
     .incbin "matlab\sprites\knight_frm.bin"
 __endasm;	
 }
@@ -1146,15 +1144,11 @@ __endasm;
 void sprite_colors(void) __naked
 {
 __asm
-    // .incbin "matlab\sprites\linktest_clr.bin"
-    // .incbin "matlab\sprites\linktest_all_clr.bin"
     .incbin "matlab\sprites\knight_clr.bin"
 __endasm;	
 }
 
-
-
-struct {
+struct SpriteObject {
 	signed int x;
 	signed int y;
 	unsigned char type;
@@ -1167,45 +1161,183 @@ void ObjectsInit(void) {
 	unsigned char t;
 	for (t=0;t<MaxObjNum;t++)
 	{
-		object[t].x = t*LevelW*16/MaxObjNum;
-		object[t].y = LevelH*16/2;
+		object[t].x = t*LevelW*4/MaxObjNum + WindowW/2;
+		object[t].y = LevelH*16/2-5;
 		object[t].frame = t;
+		object[t].status = 255;		// 0 is for inactive
 	}
 }
 
-unsigned char sprite_sat[] = {
-     2+16, 64, 8,255,   2+16, 64, 12,255,
-	 2+00, 64, 0,255,   2+00, 64,  4,255,
-	 
-    34+00, 96, 16,255, 34+00, 96,20,255,
-    34+16, 96, 24,255, 34+16, 96,28,255,
 
-    66+00,128, 32,255, 66+00,128,36,255,
-    66+16,128, 40,255, 66+16,128,44,255,
+int  u;
+unsigned char y;
+unsigned char x;
+unsigned char v;
 
-    98+00,128, 48,255, 98+00,128,52,255,
-    98+16,128, 56,255, 98+16,128,60,255,
+void ObjectstoVRAM(int MapX) __sdcccall(1)
+{
+	char t;
+	struct SpriteObject *q;
 
-     2+00,160, 64,255,  2+00,160,68,255,
-     2+16,160, 72,255,  2+16,160,76,255,
+#ifdef CPULOAD
+	myVDPwrite(0x91,7);
+#endif
 
-    34+00,160, 80,255, 34+00,160,84,255,
-    34+16,160, 88,255, 34+16,160,92,255,
+	if (cursat==0) {
+		SetVramW(0,0xFA00);	// sat 0
+		q = &object[MaxObjNum-1];
+	}
+	else {
+		SetVramW(1,0xFA00);	// sat 1		
+		q = &object[0];		
+	}
 
-    66+00,160, 96,255, 66+00,160,100,255,
-    66+16,160,104,255, 66+16,160,108,255,
-
-    98+00,160,112,255, 98+00,160,116,255,
-    98+16,160,120,255, 98+16,160,124,255,
 	
-	216
-};
- 
+	for (t=0; t<MaxObjNum; t++) 
+	{
+		// u = q->x-MapX+(MapX & 15);
+		u = q->x-(((unsigned int) MapX) & 0xFFF0);
+		y = q->y;
+		x = u;
+		v = q->frame<<4;
+		
+		if (q->status && (u>=0) && (u<WindowW)) 
+		{
+			__asm
+			ld c,#0x98
+			.rept 2
+			ld hl,#_y
+			outi
+			outi
+			outi
+			ld	a, (_v)
+			out (#0x98),a
+			add	a, #4
+			ld	(_v),a
+			.endm
+			
+			ld hl,#_y
+			ld a,#16
+			add a,(hl)
+			ld (hl),a
+			outi
+			outi
+			outi
+			ld	a,(_v)
+			out (#0x98),a
+			add	a, #4
+			ld	(_v),a
+			ld hl,#_y
+			outi
+			outi
+			outi
+			nop
+			out (#0x98),a
+			__endasm;
+		}     
+		else { 
+			__asm
+			ld a,#217
+			.rept 16
+			out (#0x98),a
+			nop
+			.endm
+			__endasm;
+		}
+		if (cursat==0) {
+			q--;
+		}
+		else {
+			q++;
+		}
+	}
+#ifdef CPULOAD
+	myVDPwrite(0,7);
+#endif
+}
+/*
+void ObjectsUpdate(int MapX) __sdcccall(1){
+	char t;
+	char *p;
+	struct SpriteObject *q;
+
+#ifdef CPULOAD
+	myVDPwrite(0x90,7);
+#endif
+		
+	p = (cursat) ? (&sprite_sat1[0]) : (&sprite_sat0[0]);
+	
+	//p = &sprite_sat[0];
+	
+	q = &object[0];
+	
+	for (t=0; t<MaxObjNum; t++) 
+	{
+		int  u = q->x-MapX;
+		char v = q->frame * 16;
+		
+		if (q->status && (u>-16) && (u<WindowW-8)) 
+		{
+			*p++ = q->y;		
+			*p++ = u;	
+			*p = v;	
+			p+=2;v+=4;
+
+			*p++ = q->y;		
+			*p++ = u;	
+			*p = v;	
+			p+=2;v+=4;
+		  
+			*p++ = q->y+16;	
+			*p++ = u;	
+			*p = v;	
+			p+=2;v+=4;
+
+			*p++ = q->y+16;	
+			*p++ = u;	
+			*p = v;	
+			p+=2;
+		}     
+		else { 
+			*p = 217;p+=4;		// remove from screen 
+			*p = 217;p+=4;		// but do not change the frame data
+			*p = 217;p+=4;
+			*p = 217;p+=4;
+		}
+		q++;
+	}
+#ifdef CPULOAD
+	myVDPwrite(0,7);
+#endif
+}
+*/
+
+
+void UpdateColor(char plane,char frame,char nsat) __sdcccall(1){
+
+	if (nsat)
+		SetVramW(1,0xF800+plane*16);
+	else
+		SetVramW(0,0xF800+plane*16);
+		
+	VramWrite(((unsigned int) &sprite_colors) + frame*64,64);
+}
+
+void UpdateFrame(char plane,char frame,char nsat) __sdcccall(1){
+
+	if (nsat)
+		SetVramW(0,0xF000+plane*32);
+	else
+		SetVramW(0,0xF000+32*32+plane*32);
+		
+	VramWrite(((unsigned int) &sprite_patterns) + frame*128,128);
+}
+/* 
 void SatUpdate(int MapX) __sdcccall(1)
 {
 	MapX;
 __asm
-	ex de,hl
+	ld	c,l
 __endasm;	
 
 #ifdef CPULOAD
@@ -1213,13 +1345,19 @@ __endasm;
 #endif
 
 __asm
-
-	ld a,#0
-	ld	hl,#0x0FA00 
-	call SetVdp_Write
-	ld 	hl,#_sprite_sat
+	ld  a,(_cursat)
+	and a
+	ld  a,#1
+	ld	de,#0x0FA00 
+	ld 	hl,#_sprite_sat1
+	jp nz,setsat1			 	// scegli quella attiva che cambia ad ogni frame
+	ld  a,#0
+	ld	de,#0x0FA00 
+	ld 	hl,#_sprite_sat0
+setsat1:	
+	call _SetVramW				// hl is unchanged
 	ld	a,#15
-	and a,e
+	and a,c
 	ld  e,a
 	ld  c,#0x98
 		
@@ -1237,53 +1375,70 @@ __endasm;
 #ifdef CPULOAD
 	myVDPwrite(0,7);
 #endif
-
+}
+*/
+void SwapSat(void) 
+{
+	cursat^=1;
+	if (cursat) 
+		myVDPwrite(3,11);		// SAT1 = 1FA00h;
+	else
+		myVDPwrite(1,11);		// SAT0 = 0FA00h;
 }
 
-void SprtInit(void) __sdcccall(1) __naked
+void SprtInit(void) __sdcccall(1) 
 {
+	char t;
+	
 	RG1SAV |= 2;
 	myVDPwrite(RG1SAV,1);
 	RG8SAV |= 32;
 	myVDPwrite(RG8SAV,8);
 	
+	SetVramW(0,0xF800);					// sat 0
+	for (t=0; t<MaxObjNum; t++) {
+		VramWrite(((unsigned int) &sprite_colors) + (MaxObjNum-1-t)*64,64);
+	}
+
+	SetVramW(1,0xF800);					// sat 1
+	for (t=0; t<MaxObjNum; t++) {
+		VramWrite(((unsigned int) &sprite_colors) + t*64,64);
+	}
+	
 __asm
 	ld a,#0
-	ld	hl,#0x0F000
-	call SetVdp_Write
+	ld	de,#0x0F000
+	call _SetVramW
 	ld 	hl,#_sprite_patterns
 	ld	de,#12*#4*#32
-	call Vram_Write
-	
-	ld a,#0
-	ld	hl,#0x0F800
-	call SetVdp_Write
-	ld 	hl,#_sprite_colors
-	ld	de,#8*#4*#16
-	call Vram_Write
+	call _VramWrite
 
-	ld a,#0
-	ld	hl,#0x0FA00 
-	call SetVdp_Write
-	ld 	hl,#_sprite_sat
-	ld	de,#128
-	call Vram_Write
+__endasm;	
+}
 
-	ret 
-
-
-Vram_Write:
+void VramWrite(unsigned int addr, unsigned int len) __sdcccall(1) __naked
+{
+	addr;
+	len;
+__asm
 	ld  c,#0x98
-00005$:
+095$:
 	outi
 	dec de
 	ld a,d
 	or a,e
-	jr nz,00005$
+	jr nz,095$
 	ret
-					; Set VDP address counter to write from address AHL (17-bit)
+__endasm;		
+}
+
+void SetVramW(char page, unsigned int addr) __sdcccall(1) __naked {
+	page;
+	addr;
+__asm
+					; Set VDP address counter to write from address ADE (17-bit)
 					; Enables the interrupts
-SetVdp_Write:
+	ex de,hl
     rlc h
     rla
     rlc h
@@ -1300,6 +1455,7 @@ SetVdp_Write:
     or a,#0x40
     ei
     out (#0x99),a
+	ex de,hl
     ret
-__endasm;	
+__endasm;		
 }
